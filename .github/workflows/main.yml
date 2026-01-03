@@ -1,44 +1,61 @@
-name: "🆓 Ultra Simple RDP"
+name: "⚡ Instant RDP - No Bullshit"
 on:
   workflow_dispatch:
 
 jobs:
-  simple-rdp:
+  instant-rdp:
     runs-on: windows-latest
     timeout-minutes: 360
 
     steps:
-      - name: Setup RDP
-        run: |
-          # One-line RDP enable
-          reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 0 /f
-          
-          # Create user
-          net user RDPUser Pass1234! /add
-          net localgroup administrators RDPUser /add
-          net localgroup "Remote Desktop Users" RDPUser /add
-          
-          # Allow firewall
-          netsh advfirewall firewall add rule name="RDP" dir=in action=allow protocol=TCP localport=3389
+    - name: One-Click RDP Setup
+      run: |
+        # === ENABLE RDP (10 seconds) ===
+        reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 0 /f
+        reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" /v UserAuthentication /t REG_DWORD /d 0 /f
+        netsh advfirewall firewall add rule name="RDP" dir=in action=allow protocol=TCP localport=3389
+        
+        # === CREATE USER (5 seconds) ===
+        net user RDPAdmin P@ssw0rd123 /add /y
+        net localgroup administrators RDPAdmin /add
+        net localgroup "Remote Desktop Users" RDPAdmin /add
 
-      - name: Get Public IP
-        run: |
-          $ip = (Invoke-WebRequest -Uri "https://api.ipify.org" -UseBasicParsing).Content
-          Write-Host "Public IP: $ip"
-          Write-Host ""
-          Write-Host "================================"
-          Write-Host "CONNECT USING:"
-          Write-Host "Computer: $ip"
-          Write-Host "Username: RDPUser"
-          Write-Host "Password: Pass1234!"
-          Write-Host ""
-          Write-Host "NOTE: This only works if GitHub's firewall"
-          Write-Host "allows inbound RDP (often blocked)"
-          Write-Host "================================"
+    - name: Install Cloudflared (Better than ngrok)
+      run: |
+        # Download Cloudflared (Cloudflare Tunnel - ALWAYS FREE)
+        Invoke-WebRequest -Uri "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe" -OutFile cloudflared.exe
+        
+        # Start tunnel to RDP port (NO ACCOUNT NEEDED for quick tunnels!)
+        Start-Process -FilePath ".\cloudflared.exe" -ArgumentList "tunnel --url tcp://localhost:3389" -NoNewWindow
+        
+        # Get the public URL
+        Start-Sleep -Seconds 10
+        
+        # Cloudflared shows URL in logs, but let's make it visible
+        Write-Host ""
+        Write-Host "================================================"
+        Write-Host "🎉 RDP IS READY! Use this info:"
+        Write-Host ""
+        Write-Host "Wait 30 seconds for tunnel to establish..."
+        Write-Host "Then check LOGS above for YOUR UNIQUE URL"
+        Write-Host "It will look like:"
+        Write-Host "trycloudflare.com:xxxxx"
+        Write-Host "OR"
+        Write-Host "https://xxxxx.trycloudflare.com"
+        Write-Host ""
+        Write-Host "Username: RDPAdmin"
+        Write-Host "Password: P@ssw0rd123"
+        Write-Host ""
+        Write-Host "📌 IMPORTANT: Look in the LOGS for your actual URL!"
+        Write-Host "================================================"
 
-      - name: Wait for connection attempt
-        run: |
-          Write-Host "Waiting 55 minutes for you to try connecting..."
-          Write-Host "If connection fails, GitHub blocks inbound RDP"
-          Write-Host "Try the ngrok method instead"
-          Start-Sleep -Seconds 3300  # 55 minutes
+    - name: Keep Alive
+      run: |
+        # Show connection every minute
+        $minutes = 0
+        while ($minutes -lt 355) {  # 5 hours 55 minutes
+            Write-Host "[$(Get-Date -Format 'HH:mm:ss')] RDP Active - URL in logs above - $minutes/355 minutes"
+            Write-Host "Still waiting? Check LOGS for trycloudflare.com URL"
+            Start-Sleep -Seconds 60
+            $minutes++
+        }
