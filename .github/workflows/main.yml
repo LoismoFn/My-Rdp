@@ -1,4 +1,4 @@
-name: "🔐 Secure RDP Setup"
+name: "🔐 Secure RDP Setup (Simple Password)"
 on:
   workflow_dispatch:
 
@@ -21,7 +21,7 @@ jobs:
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
                            -Name "fDenyTSConnections" -Value 0 -Force
           
-          # Disable NLA for easier connection (can enable later)
+          # Disable NLA for easier connection
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
                            -Name "UserAuthentication" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
@@ -51,7 +51,7 @@ jobs:
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop" 2>$null
           New-NetFirewallRule -DisplayName "RDP Port 3389" -Direction Inbound -LocalPort 3389 -Protocol TCP -Action Allow
 
-      - name: Create RDP User with Secure Password
+      - name: Create RDP User with SIMPLE Password
         run: |
           # Delete existing RDP user if exists (clean start)
           $existingUser = Get-LocalUser -Name "RDP" -ErrorAction SilentlyContinue
@@ -59,17 +59,19 @@ jobs:
               Remove-LocalUser -Name "RDP" -Confirm:$false
           }
 
-          # Generate strong random password (16 chars)
-          Add-Type -AssemblyName System.Security
-          $password = -join (
-              [char[]](65..90) | Get-Random -Count 4,   # Uppercase
-              [char[]](97..122) | Get-Random -Count 4,  # Lowercase
-              [char[]](48..57) | Get-Random -Count 4,   # Numbers
-              @('!','@','#','$','%','^','&','*') | Get-Random -Count 4  # Special chars
+          # Generate SIMPLE password - ONLY letters and numbers (16 characters)
+          # No special characters that cause RDP login issues
+          $simplePassword = -join (
+              [char[]](65..90)   | Get-Random -Count 6,   # Uppercase A-Z
+              [char[]](97..122)  | Get-Random -Count 6,   # Lowercase a-z  
+              [char[]](48..57)   | Get-Random -Count 4    # Numbers 0-9
               | Sort-Object { Get-Random }
           )
           
-          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+          # Examples of passwords this will generate:
+          # "Xk8mL9pR2qA5bN3c" or "T4hF7dK1jM6pQ2n" etc.
+          
+          $securePass = ConvertTo-SecureString $simplePassword -AsPlainText -Force
           
           # Create user
           New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires
@@ -83,43 +85,45 @@ jobs:
           
           # Store credentials
           "RDP_USER=RDP" >> $env:GITHUB_ENV
-          "RDP_PASSWORD=$password" >> $env:GITHUB_ENV
+          "RDP_PASSWORD=$simplePassword" >> $env:GITHUB_ENV
           
-          Write-Host "User created: RDP"
-          Write-Host "Password: $password"
+          Write-Host "✅ User created successfully!"
+          Write-Host "👤 Username: RDP"
+          Write-Host "🔑 Password: $simplePassword"
+          Write-Host "📝 Password contains ONLY letters and numbers - easy to type!"
 
       - name: Verify User Creation
         run: |
           $user = Get-LocalUser -Name "RDP" -ErrorAction SilentlyContinue
           if (-not $user) {
-              Write-Error "RDP user creation failed!"
+              Write-Error "❌ RDP user creation failed!"
               exit 1
           }
           
-          Write-Host "User verified: $($user.Name)"
-          Write-Host "Account enabled: $($user.Enabled)"
+          Write-Host "✅ User verified: $($user.Name)"
+          Write-Host "✅ Account enabled: $($user.Enabled)"
           
           # Verify group membership
           $isAdmin = (Get-LocalGroupMember -Group "Administrators" | Where-Object {$_.Name -like "*\RDP"})
           $isRDPUser = (Get-LocalGroupMember -Group "Remote Desktop Users" | Where-Object {$_.Name -like "*\RDP"})
           
-          Write-Host "Is Administrator: $($isAdmin -ne $null)"
-          Write-Host "Is RDP User: $($isRDPUser -ne $null)"
+          Write-Host "✅ Is Administrator: $($isAdmin -ne $null)"
+          Write-Host "✅ Is RDP User: $($isRDPUser -ne $null)"
 
       - name: Install Tailscale
         run: |
           $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi"
           $installerPath = "$env:TEMP\tailscale.msi"
           
-          Write-Host "Downloading Tailscale..."
+          Write-Host "📥 Downloading Tailscale..."
           Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath -UseBasicParsing
           
-          Write-Host "Installing Tailscale..."
+          Write-Host "⚙️ Installing Tailscale..."
           Start-Process msiexec.exe -ArgumentList @("/i", "`"$installerPath`"", "/quiet", "/norestart", "/log", "$env:TEMP\tailscale_install.log") -Wait -NoNewWindow
           
           Remove-Item $installerPath -Force -ErrorAction SilentlyContinue
           
-          Write-Host "Tailscale installed successfully"
+          Write-Host "✅ Tailscale installed successfully"
 
       - name: Start Tailscale Connection
         run: |
@@ -127,7 +131,7 @@ jobs:
           Start-Sleep -Seconds 10
           
           # Start Tailscale
-          Write-Host "Starting Tailscale..."
+          Write-Host "🔗 Starting Tailscale..."
           & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=github-runner-$env:GITHUB_RUN_ID --accept-routes
           
           # Get Tailscale IP
@@ -138,27 +142,28 @@ jobs:
           while ($retryCount -lt $maxRetries -and -not $tsIP) {
               $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4 2>$null
               if (-not $tsIP) {
-                  Write-Host "Waiting for Tailscale IP... ($retryCount/$maxRetries)"
+                  Write-Host "⏳ Waiting for Tailscale IP... ($retryCount/$maxRetries)"
                   Start-Sleep -Seconds 5
                   $retryCount++
               }
           }
           
           if (-not $tsIP) {
-              Write-Error "Failed to get Tailscale IP after $maxRetries retries"
+              Write-Error "❌ Failed to get Tailscale IP after $maxRetries retries"
               exit 1
           }
           
-          Write-Host "Tailscale IP: $tsIP"
+          Write-Host "✅ Tailscale IP: $tsIP"
           "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
           
           # Display Tailscale status
-          Write-Host "`nTailscale Status:"
+          Write-Host "`n📡 Tailscale Status:"
           & "$env:ProgramFiles\Tailscale\tailscale.exe" status
 
       - name: Start RDP Services and Verify
         run: |
           # Restart RDP services
+          Write-Host "🔄 Starting RDP services..."
           Restart-Service -Name TermService -Force
           Restart-Service -Name UmRdpService -Force -ErrorAction SilentlyContinue
           Restart-Service -Name SessionEnv -Force -ErrorAction SilentlyContinue
@@ -166,18 +171,20 @@ jobs:
           Start-Sleep -Seconds 10
           
           # Check services are running
+          Write-Host "🔍 Checking service status..."
           $services = @("TermService", "UmRdpService", "SessionEnv")
           foreach ($service in $services) {
               $svc = Get-Service -Name $service -ErrorAction SilentlyContinue
               if ($svc) {
-                  Write-Host "$service status: $($svc.Status)"
+                  Write-Host "  $service status: $($svc.Status)"
               }
           }
           
           # Verify port 3389 is listening
+          Write-Host "🔍 Checking port 3389..."
           $listening = Get-NetTCPConnection -LocalPort 3389 -State Listen -ErrorAction SilentlyContinue
           if (-not $listening) {
-              Write-Warning "Port 3389 not listening. Checking again..."
+              Write-Warning "⚠️ Port 3389 not listening. Checking again..."
               Start-Sleep -Seconds 5
               $listening = Get-NetTCPConnection -LocalPort 3389 -State Listen -ErrorAction SilentlyContinue
           }
@@ -186,38 +193,39 @@ jobs:
               Write-Host "✅ Port 3389 is listening!"
           } else {
               Write-Error "❌ Port 3389 is NOT listening"
-              Write-Host "Trying to manually start RDP..."
-              # Last resort: enable via GUI method
+              Write-Host "🔄 Trying to manually start RDP..."
               Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
               Restart-Service -Name TermService -Force
               Start-Sleep -Seconds 10
           }
-          
-          # Display network configuration
-          Write-Host "`nNetwork Configuration:"
-          ipconfig | Select-String "IPv4" | ForEach-Object { Write-Host "  $_" }
 
       - name: Display Connection Information
         run: |
           Write-Host ""
-          Write-Host "═" * 50
-          Write-Host "🚀 RDP CONNECTION READY"
-          Write-Host "═" * 50
+          Write-Host "═" * 60
+          Write-Host "🚀 RDP CONNECTION READY - SIMPLE PASSWORD"
+          Write-Host "═" * 60
           Write-Host ""
           Write-Host "📡 Tailscale IP: $env:TAILSCALE_IP"
           Write-Host "👤 Username: RDP"
           Write-Host "🔑 Password: $env:RDP_PASSWORD"
           Write-Host ""
-          Write-Host "📋 Connection String:"
+          Write-Host "📋 Connection Command:"
           Write-Host "mstsc /v:$env:TAILSCALE_IP"
+          Write-Host ""
+          Write-Host "✨ Password Features:"
+          Write-Host "  • ONLY letters (A-Z, a-z) and numbers (0-9)"
+          Write-Host "  • NO special characters like $, >, (, ), etc."
+          Write-Host "  • Easy to type manually"
           Write-Host ""
           Write-Host "⚠️  IMPORTANT:"
           Write-Host "1. Install Tailscale on YOUR computer: https://tailscale.com/download"
           Write-Host "2. Sign in with the SAME account as TAILSCALE_AUTH_KEY"
-          Write-Host "3. Then connect using the IP and credentials above"
+          Write-Host "3. Wait 30 seconds for network sync"
+          Write-Host "4. Connect using credentials above"
           Write-Host ""
           Write-Host "⏳ This runner will stay active for 60 minutes"
-          Write-Host "═" * 50
+          Write-Host "═" * 60
           Write-Host ""
 
       - name: Keep Runner Alive
