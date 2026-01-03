@@ -1,56 +1,126 @@
-name: "🎮 Playit.gg RDP (Best Free Tunnel)"
+name: "🚀 Instant RDP - No Bullshit"
 on:
   workflow_dispatch:
 
 jobs:
-  playit-rdp:
+  instant-rdp:
     runs-on: windows-latest
     timeout-minutes: 360
 
     steps:
-    - name: Setup RDP in 5 seconds
+    - name: Setup RDP in 10 seconds
       run: |
-        # Ultra-fast RDP setup
+        # === SUPER FAST RDP SETUP ===
+        # Enable RDP
         Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
-        netsh advfirewall firewall add rule name="RDP" dir=in action=allow protocol=TCP localport=3389
-        net user GameRDP GamePass123! /add
-        net localgroup administrators GameRDP /add
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
+        
+        # Allow firewall
+        netsh advfirewall firewall add rule name="RDP-ALLOW" dir=in action=allow protocol=TCP localport=3389
+        
+        # Create user
+        net user FreeRDP P@ssw0rd123! /add /y
+        net localgroup administrators FreeRDP /add
+        net localgroup "Remote Desktop Users" FreeRDP /add
+        
+        # Restart service
+        Restart-Service TermService -Force
+        
+        Write-Host "✅ RDP Enabled!"
+        Write-Host "👤 Username: FreeRDP"
+        Write-Host "🔑 Password: P@ssw0rd123!"
 
-    - name: Install Playit.gg (Gaming tunnel - FREE forever)
+    - name: Setup ZeroTier (BEST FREE VPN - Better than Tailscale)
       run: |
-        # Download Playit.gg (BETTER than ngrok, made for gaming)
-        Invoke-WebRequest -Uri "https://playit.gg/downloads/playit-cli.exe" -OutFile playit.exe
+        # === ZEROTIER - FREE, NO LIMITS ===
+        # Download ZeroTier
+        Invoke-WebRequest -Uri "https://download.zerotier.com/dist/ZeroTier%20One.msi" -OutFile zerotier.msi
         
-        # Start tunnel to RDP (NO ACCOUNT NEEDED!)
-        Start-Process -FilePath ".\playit.exe" -ArgumentList "tunnel --port 3389" -NoNewWindow
+        # Install silently
+        Start-Process msiexec.exe -ArgumentList "/i", "zerotier.msi", "/quiet", "/norestart" -Wait
+        
+        # Wait for install
+        Start-Sleep -Seconds 10
+        
+        # Join network (using public demo network)
+        & "C:\Program Files (x86)\ZeroTier\One\zerotier-one_x64.exe" join 8056c2e21c000001
         
         Write-Host ""
-        Write-Host "🔥🔥🔥 PLAYIT.GG TUNNEL STARTED 🔥🔥🔥"
+        Write-Host "=============================================="
+        Write-Host "🌐 ZEROTIER NETWORK JOINED!"
         Write-Host ""
-        Write-Host "Wait 15 seconds, then check LOGS above!"
-        Write-Host "Playit will give you a FREE public URL"
-        Write-Host "Example: playit.gg/claim?code=XXXXXX"
-        Write-Host "OR direct IP: xxxx.playit.gg:xxxxx"
+        Write-Host "1. Install ZeroTier on YOUR computer:"
+        Write-Host "   https://www.zerotier.com/download/"
         Write-Host ""
-        Write-Host "Username: GameRDP"
-        Write-Host "Password: GamePass123!"
+        Write-Host "2. Join this network ID:"
+        Write-Host "   Network ID: 8056c2e21c000001"
         Write-Host ""
-        Write-Host "✅ This is 100% FREE, no account, no limits!"
-        Write-Host "✅ Made for gaming, perfect for RDP!"
-        Write-Host "✅ Faster than ngrok, better than Cloudflare!"
-        Write-Host ""
-        Write-Host "📢 LOOK IN THE LOGS FOR YOUR URL!"
+        Write-Host "3. Wait 30 seconds for connection"
+        Write-Host "4. Check your ZeroTier IP below"
+        Write-Host "=============================================="
+        
+        # Get ZeroTier IP
+        Start-Sleep -Seconds 15
+        $ztIP = & "C:\Program Files (x86)\ZeroTier\One\zerotier-one_x64.exe" listnetworks | Select-String "8056c2e21c000001"
+        Write-Host "ZeroTier Status: $ztIP"
 
-    - name: Wait for connection
+    - name: Display Connection Info
       run: |
-        Write-Host "⏳ Waiting for your connection..."
-        Write-Host "🔍 Check logs above for Playit.gg URL!"
-        Write-Host "⏰ You have 6 hours (free GitHub limit)"
+        # Get ZeroTier IP
+        Start-Sleep -Seconds 10
+        $ztStatus = & "C:\Program Files (x86)\ZeroTier\One\zerotier-one_x64.exe" listnetworks
         
-        # Show reminder every 2 minutes
-        for ($i = 1; $i -le 180; $i++) {
-            if ($i % 2 -eq 0) {
-                Write-Host "[$i/180 min] RDP Ready - Check LOGS for Playit URL!"
+        Write-Host ""
+        Write-Host "🔥🔥🔥 RDP CONNECTION READY 🔥🔥🔥"
+        Write-Host "=========================================="
+        Write-Host "METHOD 1: ZeroTier (Recommended)"
+        Write-Host "------------------------------------------"
+        Write-Host "1. Install ZeroTier: https://zerotier.com"
+        Write-Host "2. Join network: 8056c2e21c000001"
+        Write-Host "3. Your ZeroTier IP will appear below"
+        Write-Host "4. Connect via: mstsc /v:[ZeroTier-IP]"
+        Write-Host ""
+        Write-Host "METHOD 2: LocalTry (Public URL)"
+        Write-Host "------------------------------------------"
+        Write-Host "Alternative: Using LocalTry tunnel..."
+        
+        # Start LocalTry (alternative to ngrok)
+        Start-Process -FilePath "powershell" -ArgumentList "-Command", "iwr -useb https://localtry.github.io/localtry.ps1 | iex; Start-LocalTry -Port 3389" -NoNewWindow
+        
+        Write-Host ""
+        Write-Host "CREDENTIALS:"
+        Write-Host "Username: FreeRDP"
+        Write-Host "Password: P@ssw0rd123!"
+        Write-Host ""
+        Write-Host "⏰ You have 6 hours (GitHub free limit)"
+        Write-Host "=========================================="
+
+    - name: Keep Alive & Show IP
+      run: |
+        $minutes = 0
+        while ($minutes -lt 355) {
+            # Show ZeroTier IP every 5 minutes
+            if ($minutes % 5 -eq 0) {
+                Write-Host ""
+                Write-Host "--- [$(Get-Date -Format 'HH:mm:ss')] STATUS ---"
+                Write-Host "Minutes active: $minutes/355"
+                
+                # Try to get ZeroTier IP
+                try {
+                    $ztInfo = & "C:\Program Files (x86)\ZeroTier\One\zerotier-one_x64.exe" listnetworks 2>$null
+                    $ipMatch = $ztInfo | Select-String -Pattern "\b(10\.|192\.168\.|172\.)\d+\.\d+\.\d+\b"
+                    if ($ipMatch) {
+                        Write-Host "ZeroTier IP found: $($ipMatch.Matches.Value)"
+                    }
+                } catch {
+                    Write-Host "ZeroTier: Getting IP..."
+                }
+                
+                Write-Host "Username: FreeRDP"
+                Write-Host "Password: P@ssw0rd123!"
+                Write-Host "------------------------"
             }
+            
             Start-Sleep -Seconds 60
+            $minutes++
         }
